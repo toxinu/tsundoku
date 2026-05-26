@@ -20,7 +20,10 @@
     .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
     .sub-folder-input { width: 90px; padding: 0.1rem 0.3rem; font-size: 0.8em; font-family: monospace; margin: 0; flex-shrink: 0; }
     .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
-    #feed-filter select { display: inline-block; width: auto; margin: 0 0 0.5rem; }
+    #feed-filter { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
+    #feed-filter select { display: inline-block; width: auto; margin: 0; }
+    #feed-filter button { width: auto; margin: 0; padding: 0.2rem 0.5rem; font-size: 0.85em; }
+    .feed-item.is-read { opacity: 0.4; }
   </style>
 </head>
 <body>
@@ -57,6 +60,7 @@
       <select id="feed-folder-filter" onchange="loadFeed()">
         <option value="">All folders</option>
       </select>
+      <button id="toggle-read-btn" onclick="toggleShowRead()">show read</button>
     </div>
     <p id="feed-status" class="hint hidden"></p>
     <div id="feed-list"></div>
@@ -210,17 +214,38 @@ async function fetchFeed(rssUrl) {
 const app = { token: null, gistId: null, data: null };
 
 const readSet = new Set();
+let showRead = false;
+
+function toggleShowRead() {
+  showRead = !showRead;
+  document.getElementById('toggle-read-btn').textContent = showRead ? 'hide read' : 'show read';
+  renderFiltered();
+}
 
 function initReadSet() {
   readSet.clear();
   for (const url of (app.data.read || [])) readSet.add(url);
 }
 
-async function markRead(url) {
+let saveTimer = null;
+function scheduleSave() {
+  clearTimeout(saveTimer);
+  saveTimer = setTimeout(() => gistWrite(app.gistId, app.data, app.token), 2000);
+}
+
+function markRead(url) {
   readSet.add(url);
   app.data.read = [...readSet];
-  document.getElementById('item-' + btoa(url).replace(/[^a-z0-9]/gi, ''))?.remove();
-  await gistWrite(app.gistId, app.data, app.token);
+  if (showRead) renderFiltered();
+  else document.getElementById('item-' + btoa(url).replace(/[^a-z0-9]/gi, ''))?.remove();
+  scheduleSave();
+}
+
+function markUnread(url) {
+  readSet.delete(url);
+  app.data.read = [...readSet];
+  renderFiltered();
+  scheduleSave();
 }
 
 // ── UI helpers ─────────────────────────────────────────────────────
@@ -261,21 +286,22 @@ function fmtDate(iso) {
 
 function renderEntries(entries) {
   const list = document.getElementById('feed-list');
-  const unread = entries.filter(v => !readSet.has(v.url));
-  if (!unread.length) {
+  const visible = showRead ? entries : entries.filter(v => !readSet.has(v.url));
+  if (!visible.length) {
     list.innerHTML = '';
-    return setMsg('feed-status', 'Nothing unread.', true);
+    return setMsg('feed-status', showRead ? 'No entries.' : 'Nothing unread.', true);
   }
   setMsg('feed-status', '', false);
-  list.innerHTML = unread.map(v => {
+  list.innerHTML = visible.map(v => {
+    const isRead = readSet.has(v.url);
     const id = 'item-' + btoa(v.url).replace(/[^a-z0-9]/gi, '');
     return `
-    <div class="feed-item" id="${id}">
+    <div class="feed-item${isRead ? ' is-read' : ''}" id="${id}">
       ${v.thumb ? `<img src="${esc(v.thumb)}" loading="lazy" alt="">` : ''}
       <div class="feed-item-body">
         <div><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a></div>
         <div><span class="hint">${esc(v.channel)} · ${fmtDate(v.published)}</span></div>
-        <a class="mark-read" onclick="markRead(this.dataset.url)" data-url="${esc(v.url)}">mark as read</a>
+        <a class="mark-read" onclick="${isRead ? 'markUnread' : 'markRead'}(this.dataset.url)" data-url="${esc(v.url)}">${isRead ? 'mark as unread' : 'mark as read'}</a>
       </div>
     </div>`;
   }).join('');
@@ -300,8 +326,17 @@ async function refreshFeeds() {
   });
   if (!changed) return;
   await gistWrite(app.gistId, app.data, app.token);
-  renderEntries(flattenEntries());
+  renderFiltered();
   setMsg('feed-status', '', false);
+}
+
+function renderFiltered() {
+  const folderFilter = document.getElementById('feed-folder-filter')?.value || '';
+  const all = flattenEntries();
+  const entries = folderFilter
+    ? all.filter(e => getFolderForChannel(e.channel) === folderFilter)
+    : all;
+  renderEntries(entries);
 }
 
 function getFolders() {
@@ -333,15 +368,8 @@ async function loadFeed() {
   }
 
   const all = flattenEntries();
-  const entries = folderFilter
-    ? all.filter(e => getFolderForChannel(e.channel) === folderFilter)
-    : all;
-
-  if (entries.length) {
-    renderEntries(entries);
-  } else {
-    setMsg('feed-status', 'No entries yet — hit Refresh on the subscriptions page.', true);
-  }
+  if (!all.length) return setMsg('feed-status', 'No entries yet — hit Refresh on the subscriptions page.', true);
+  renderFiltered();
 }
 
 // ── Subscriptions ───────────────────────────────────────────────────
@@ -576,5 +604,22 @@ for (const id of ['sub-input', 'sub-folder'])
   }
 })();
 </script>
+
+<!--
+ ██╗   ██╗██╗██████╗ ███████╗      ██████╗ ██████╗ ██████╗ ███████╗██████╗
+ ██║   ██║██║██╔══██╗██╔════╝     ██╔════╝██╔═══██╗██╔══██╗██╔════╝██╔══██╗
+ ██║   ██║██║██████╔╝█████╗       ██║     ██║   ██║██║  ██║█████╗  ██║  ██║
+ ╚██╗ ██╔╝██║██╔══██╗██╔══╝       ██║     ██║   ██║██║  ██║██╔══╝  ██║  ██║
+  ╚████╔╝ ██║██████╔╝███████╗     ╚██████╗╚██████╔╝██████╔╝███████╗██████╔╝
+   ╚═══╝  ╚═╝╚═════╝ ╚══════╝      ╚═════╝ ╚═════╝ ╚═════╝ ╚══════╝╚═════╝
+
+  !! DISCLAIMER !!
+
+  This entire codebase has been 100% FULLY VIBE CODED.
+  No tests. No planning. No regrets.
+  Built on vibes, caffeine, and the audacity of a single HTML file.
+
+  Use at your own risk. Or don't. The vibe doesn't care.
+-->
 </body>
 </html>
