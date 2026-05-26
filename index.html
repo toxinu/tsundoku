@@ -17,7 +17,8 @@
     .feed-item-body .mark-read { margin-top: auto; font-size: 0.85em; cursor: pointer; }
     .sub-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; border-bottom: 1px solid #eee; }
     .sub-row button { width: auto; margin: 0; padding: 0.1rem 0.4rem; flex-shrink: 0; }
-    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.3rem; font-size: 0.8em; font-family: monospace; margin: 0; border: 1px solid transparent; }
+    .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; }
     .sub-folder-input { width: 90px; padding: 0.1rem 0.3rem; font-size: 0.8em; font-family: monospace; margin: 0; flex-shrink: 0; }
     .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
     #feed-filter { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
@@ -52,7 +53,7 @@
 
 <!-- ── App ────────────────────────────────────────────────────────── -->
 <div id="screen-app" class="hidden">
-  <nav><strong>crappzyt</strong> — <a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a></nav>
+  <nav><strong>crappzyt</strong> — <a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a><a onclick="showPage('settings')">settings</a><span id="save-status" class="hint hidden"></span></nav>
   <hr>
 
   <div id="page-feed">
@@ -77,6 +78,18 @@
     <p id="sub-status" class="hint  hidden"></p>
     <h3>Subscriptions</h3>
     <div id="sub-list"></div>
+  </div>
+
+  <div id="page-settings" class="hidden">
+    <h3>Session</h3>
+    <button onclick="logout()">Log out</button>
+    <h3>Change password</h3>
+    <input id="cp-current"  type="password" placeholder="Current password">
+    <input id="cp-new"      type="password" placeholder="New password">
+    <input id="cp-confirm"  type="password" placeholder="Confirm new password">
+    <button id="cp-btn" onclick="changePassword()">Change password</button>
+    <p id="cp-error"  class="error  hidden"></p>
+    <p id="cp-status" class="hint   hidden"></p>
   </div>
 </div>
 
@@ -228,9 +241,33 @@ function initReadSet() {
 }
 
 let saveTimer = null;
+let saveRetry = 0;
+
+function setSaveStatus(msg) {
+  let el = document.getElementById('save-status');
+  if (!el) return;
+  el.textContent = msg;
+  el.classList.toggle('hidden', !msg);
+}
+
+async function flushSave() {
+  try {
+    setSaveStatus('saving…');
+    await gistWrite(app.gistId, app.data, app.token);
+    saveRetry = 0;
+    setSaveStatus('');
+  } catch {
+    saveRetry++;
+    const delay = Math.min(2000 * Math.pow(2, saveRetry), 60_000);
+    setSaveStatus(`save failed, retrying in ${Math.round(delay / 1000)}s…`);
+    saveTimer = setTimeout(flushSave, delay);
+  }
+}
+
 function scheduleSave() {
   clearTimeout(saveTimer);
-  saveTimer = setTimeout(() => gistWrite(app.gistId, app.data, app.token), 2000);
+  saveRetry = 0;
+  saveTimer = setTimeout(flushSave, 2000);
 }
 
 function markRead(url) {
@@ -256,7 +293,7 @@ function showScreen(name) {
 }
 
 function showPage(name) {
-  for (const p of ['feed','subs'])
+  for (const p of ['feed','subs','settings'])
     document.getElementById(`page-${p}`).classList.toggle('hidden', p !== name);
   if (name === 'feed') loadFeed();
   if (name === 'subs') renderSubs();
@@ -309,18 +346,21 @@ function renderEntries(entries) {
 
 function flattenEntries() {
   return app.data.subscriptions
+    .filter(s => !s.disabled)
     .flatMap(s => (s.entries || []).map(e => ({ ...e, channel: s.name })))
     .sort((a, b) => new Date(b.published) - new Date(a.published));
 }
 
 async function refreshFeeds() {
   const subs = app.data.subscriptions;
-  const results = await Promise.allSettled(subs.map(s => fetchFeed(s.rssUrl)));
+  const active = subs.map((s, i) => ({ s, i })).filter(({ s }) => !s.disabled);
+  const results = await Promise.allSettled(active.map(({ s }) => fetchFeed(s.rssUrl)));
   let changed = false;
-  results.forEach((r, i) => {
+  results.forEach((r, j) => {
     if (r.status === 'fulfilled') {
-      subs[i].entries    = r.value.entries;
-      subs[i].fetchedAt  = new Date().toISOString();
+      const i = active[j].i;
+      subs[i].entries   = r.value.entries;
+      subs[i].fetchedAt = new Date().toISOString();
       changed = true;
     }
   });
@@ -418,16 +458,45 @@ function renderSubs() {
 
     html += groups[folder].map(s => `
       <div class="sub-row" id="sub-row-${s._i}">
-        <span class="sub-name">${esc(s.name)}</span>
+        <input class="sub-name${s.disabled ? ' hint' : ''}" type="text" value="${esc(s.name)}"
+          data-idx="${s._i}"
+          onblur="saveSubName(this)" onkeydown="if(event.key==='Enter')this.blur()">
         <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
           data-idx="${s._i}" list="folder-datalist"
           onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
+        <button onclick="readAllSub(${s._i})">read all</button>
+        <button onclick="toggleDisableSub(${s._i})">${s.disabled ? 'enable' : 'disable'}</button>
         <button onclick="refreshSub(${s._i})">refresh</button>
         <button onclick="removeSub(${s._i})">remove</button>
       </div>`).join('');
   }
 
   list.innerHTML = html;
+}
+
+async function readAllSub(i) {
+  const sub = app.data.subscriptions[i];
+  for (const e of (sub.entries || [])) readSet.add(e.url);
+  app.data.read = [...readSet];
+  renderFiltered();
+  scheduleSave();
+}
+
+async function toggleDisableSub(i) {
+  const sub = app.data.subscriptions[i];
+  if (sub.disabled) delete sub.disabled;
+  else sub.disabled = true;
+  await gistWrite(app.gistId, app.data, app.token);
+  renderSubs();
+  renderFiltered();
+}
+
+async function saveSubName(input) {
+  const idx = +input.dataset.idx;
+  const name = input.value.trim();
+  if (!name || name === app.data.subscriptions[idx].name) return;
+  app.data.subscriptions[idx].name = name;
+  await gistWrite(app.gistId, app.data, app.token);
 }
 
 async function saveSubFolder(input) {
@@ -504,6 +573,47 @@ async function removeSub(i) {
   app.data.subscriptions.splice(i, 1);
   await gistWrite(app.gistId, app.data, app.token);
   renderSubs();
+}
+
+// ── Settings ───────────────────────────────────────────────────────
+
+function logout() {
+  sessionStorage.removeItem('crappzyt_token');
+  Object.assign(app, { token: null, gistId: null, data: null });
+  readSet.clear();
+  document.getElementById('login-gist').value = localStorage.getItem('crappzyt_gist') || '';
+  showScreen('login');
+}
+
+async function changePassword() {
+  setMsg('cp-error', '');
+  setMsg('cp-status', '');
+  const current = document.getElementById('cp-current').value;
+  const newPw   = document.getElementById('cp-new').value;
+  const confirm = document.getElementById('cp-confirm').value;
+
+  if (!current) return setMsg('cp-error', 'Current password is required.', true);
+  if (!newPw)   return setMsg('cp-error', 'New password is required.', true);
+  if (newPw !== confirm) return setMsg('cp-error', 'New passwords do not match.', true);
+
+  const btn = document.getElementById('cp-btn');
+  btn.disabled = true;
+  btn.textContent = 'Saving…';
+  try {
+    await decryptToken(app.data, current);
+    const encrypted = await encryptToken(app.token, newPw);
+    Object.assign(app.data, encrypted);
+    await gistWrite(app.gistId, app.data, app.token);
+    document.getElementById('cp-current').value = '';
+    document.getElementById('cp-new').value = '';
+    document.getElementById('cp-confirm').value = '';
+    setMsg('cp-status', 'Password changed successfully.', true);
+  } catch {
+    setMsg('cp-error', 'Current password is incorrect.', true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Change password';
+  }
 }
 
 // ── Auth ────────────────────────────────────────────────────────────
