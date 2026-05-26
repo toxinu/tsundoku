@@ -370,6 +370,11 @@ function flattenEntries() {
     .sort((a, b) => new Date(b.published) - new Date(a.published));
 }
 
+function mergeEntries(existing, fresh) {
+  const readByUrl = new Map((existing || []).map(e => [e.url, e.read]));
+  return fresh.map(e => readByUrl.get(e.url) ? { ...e, read: true } : e);
+}
+
 async function refreshFeeds() {
   const subs = app.data.subscriptions;
   const active = subs.map((s, i) => ({ s, i })).filter(({ s }) => !s.disabled);
@@ -378,7 +383,7 @@ async function refreshFeeds() {
   results.forEach((r, j) => {
     if (r.status === 'fulfilled') {
       const i = active[j].i;
-      subs[i].entries   = r.value.entries;
+      subs[i].entries   = mergeEntries(subs[i].entries, r.value.entries);
       subs[i].fetchedAt = new Date().toISOString();
       changed = true;
     }
@@ -539,7 +544,7 @@ async function refreshSub(i) {
   btn.textContent = '…';
   try {
     const { entries } = await fetchFeed(sub.rssUrl);
-    sub.entries   = entries;
+    sub.entries   = mergeEntries(sub.entries, entries);
     sub.fetchedAt = new Date().toISOString();
     await gistWrite(app.gistId, app.data, app.token);
   } catch (e) {
