@@ -142,7 +142,9 @@ async function gistRead(id) {
   const res = await fetch(`https://api.github.com/gists/${id}`);
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
   const g = await res.json();
-  return JSON.parse(g.files[FILE].content);
+  const file = g.files[FILE] ?? g.files['crappzyt.json'];
+  if (!file) throw new Error('Gist file not found');
+  return JSON.parse(file.content);
 }
 
 async function gistWrite(id, data, token) {
@@ -716,8 +718,14 @@ for (const id of ['sub-input', 'sub-folder'])
 // ── Init ────────────────────────────────────────────────────────────
 
 (async () => {
+  // migrate localStorage key from old project name
+  if (!localStorage.getItem('tsundoku_gist') && localStorage.getItem('crappzyt_gist')) {
+    localStorage.setItem('tsundoku_gist', localStorage.getItem('crappzyt_gist'));
+    localStorage.removeItem('crappzyt_gist');
+  }
+
   const gistId = localStorage.getItem('tsundoku_gist');
-  const token  = sessionStorage.getItem('tsundoku_token');
+  const token  = sessionStorage.getItem('tsundoku_token') || sessionStorage.getItem('crappzyt_token');
 
   if (gistId && token) {
     try {
