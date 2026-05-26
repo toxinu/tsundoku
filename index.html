@@ -70,8 +70,8 @@
   <div id="page-subs" class="hidden">
     <button id="refresh-btn">Refresh feeds</button>
     <p id="refresh-status" class="hint hidden"></p>
-    <h3>Add channel</h3>
-    <input id="sub-input"  type="text" placeholder="youtube.com/channel/UCxxxxx  or  UCxxxxx">
+    <h3>Add feed</h3>
+    <input id="sub-input"  type="text" placeholder="RSS URL  or  youtube.com/channel/UCxxxxx">
     <input id="sub-folder" type="text" placeholder="Folder (optional)" list="folder-datalist">
     <button id="sub-btn">Add</button>
     <p id="sub-error"  class="error hidden"></p>
@@ -159,7 +159,7 @@ async function gistWrite(id, data, token) {
   throw new Error('GitHub 409: too many conflicts, try again later');
 }
 
-// ── YouTube ────────────────────────────────────────────────────────
+// ── Feed ───────────────────────────────────────────────────────────
 
 const PROXIES = [
   url => 'https://crossorigin.me/' + url,
@@ -176,23 +176,34 @@ function channelToRss(channelId) {
   return `https://www.youtube.com/feeds/videos.xml?playlist_id=UULF${channelId.slice(2)}`;
 }
 
-function resolveChannelId(raw) {
+function resolveInput(raw) {
   raw = raw.trim();
+  if (!raw) throw new Error('Enter a feed URL.');
 
-  // bare channel ID
-  if (/^UC[a-zA-Z0-9_-]{22}$/.test(raw)) return raw;
+  // bare YouTube channel ID
+  if (/^UC[a-zA-Z0-9_-]{22}$/.test(raw)) {
+    const channelId = raw;
+    return { channelId, rssUrl: channelToRss(channelId) };
+  }
 
-  // normalize to full URL
-  if (!raw.startsWith('http')) raw = 'https://www.youtube.com/' + raw.replace(/^\/*/, '');
-
+  // must be a URL from here on
   let url;
-  try { url = new URL(raw); } catch { throw new Error('Invalid URL'); }
+  try { url = new URL(raw.startsWith('http') ? raw : 'https://' + raw); }
+  catch { throw new Error('Invalid URL'); }
 
-  // /channel/UCxxxxxx — direct
+  // YouTube /channel/UCxxxxx
   const direct = url.pathname.match(/\/channel\/(UC[a-zA-Z0-9_-]{22})/);
-  if (direct) return direct[1];
+  if (direct) {
+    const channelId = direct[1];
+    return { channelId, rssUrl: channelToRss(channelId) };
+  }
 
-  throw new Error('Paste the /channel/UCxxxxx URL — @handle URLs require a proxy.');
+  // YouTube @handle — not resolvable client-side
+  if (url.hostname.includes('youtube.com') && url.pathname.startsWith('/@'))
+    throw new Error('Paste the /channel/UCxxxxx URL — @handle URLs require a proxy.');
+
+  // generic RSS/Atom feed URL
+  return { rssUrl: url.href };
 }
 
 async function fetchWithProxy(url) {
@@ -211,17 +222,39 @@ async function fetchFeed(rssUrl) {
   const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
 
   const MEDIA = 'http://search.yahoo.com/mrss/';
-  const channelName = doc.querySelector('feed > author > name')?.textContent ?? 'Unknown';
 
-  return {
-    channelName,
-    entries: [...doc.querySelectorAll('entry')].map(e => ({
-      title:     e.querySelector('title')?.textContent ?? '',
-      url:       e.querySelector('link')?.getAttribute('href') ?? '',
-      published: e.querySelector('published')?.textContent ?? '',
-      thumb:     e.getElementsByTagNameNS(MEDIA, 'thumbnail')[0]?.getAttribute('url') ?? '',
-    })),
-  };
+  if (doc.querySelector('feed')) {
+    // Atom format (YouTube and others)
+    const channelName = doc.querySelector('feed > author > name')?.textContent
+      ?? doc.querySelector('feed > title')?.textContent ?? 'Unknown';
+    return {
+      channelName,
+      entries: [...doc.querySelectorAll('entry')].map(e => ({
+        title:     e.querySelector('title')?.textContent ?? '',
+        url:       e.querySelector('link')?.getAttribute('href') ?? '',
+        published: e.querySelector('published')?.textContent
+          ?? e.querySelector('updated')?.textContent ?? '',
+        thumb:     e.getElementsByTagNameNS(MEDIA, 'thumbnail')[0]?.getAttribute('url')
+          ?? e.getElementsByTagNameNS(MEDIA, 'content')[0]?.getAttribute('url') ?? '',
+      })),
+    };
+  } else {
+    // RSS 2.0 format
+    const channelName = doc.querySelector('channel > title')?.textContent ?? 'Unknown';
+    return {
+      channelName,
+      entries: [...doc.querySelectorAll('item')].map(e => ({
+        title:     e.querySelector('title')?.textContent ?? '',
+        url:       (e.querySelector('link')?.textContent?.trim()
+          || e.querySelector('link')?.getAttribute('href')
+          || e.querySelector('guid')?.textContent?.trim()) ?? '',
+        published: e.querySelector('pubDate')?.textContent ?? '',
+        thumb:     e.getElementsByTagNameNS(MEDIA, 'thumbnail')[0]?.getAttribute('url')
+          ?? e.getElementsByTagNameNS(MEDIA, 'content')[0]?.getAttribute('url')
+          ?? e.querySelector('enclosure[type^="image"]')?.getAttribute('url') ?? '',
+      })),
+    };
+  }
 }
 
 // ── State ──────────────────────────────────────────────────────────
@@ -355,7 +388,7 @@ function renderEntries(entries) {
     const id = 'item-' + btoa(v.url).replace(/[^a-z0-9]/gi, '');
     return `
     <div class="feed-item${isRead ? ' is-read' : ''}" id="${id}">
-      ${v.thumb ? `<img src="${esc(v.thumb)}" loading="lazy" alt="">` : ''}
+      ${v.thumb ? `<img src="${esc(v.thumb)}" loading="lazy" alt="">` : '<div style="width:120px;height:68px;flex-shrink:0"></div>'}
       <div class="feed-item-body">
         <div><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a></div>
         <div><span class="hint">${esc(v.channel)} · ${fmtDate(v.published)}</span></div>
@@ -564,11 +597,10 @@ document.getElementById('sub-btn').addEventListener('click', async () => {
 
   setBtn('sub-btn', true, 'Resolving…');
   try {
-    setMsg('sub-status', 'Looking up channel…', true);
-    const channelId = resolveChannelId(raw);
-    const rssUrl = channelToRss(channelId);
+    setMsg('sub-status', 'Resolving feed…', true);
+    const { channelId, rssUrl } = resolveInput(raw);
 
-    if (app.data.subscriptions.some(s => s.channelId === channelId))
+    if (app.data.subscriptions.some(s => s.rssUrl === rssUrl))
       throw new Error('Already subscribed.');
 
     setMsg('sub-status', 'Fetching feed…', true);
@@ -576,7 +608,8 @@ document.getElementById('sub-btn').addEventListener('click', async () => {
 
     const folder = document.getElementById('sub-folder').value.trim() || undefined;
     app.data.subscriptions.push({
-      channelId, name: channelName, rssUrl,
+      ...(channelId ? { channelId } : {}),
+      name: channelName, rssUrl,
       entries, fetchedAt: new Date().toISOString(),
       ...(folder ? { folder } : {}),
     });
