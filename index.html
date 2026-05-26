@@ -58,7 +58,7 @@
 
 <!-- ── App ────────────────────────────────────────────────────────── -->
 <div id="screen-app" class="hidden">
-  <nav><strong>tsundoku</strong> — <a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a><a onclick="showPage('settings')">settings</a><span id="save-status" class="hint hidden"></span></nav>
+  <nav><strong>tsundoku</strong> — <span id="nav-links"><a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a><a onclick="showPage('settings')">settings</a></span><span id="save-status" class="hint hidden"></span></nav>
   <hr>
 
   <div id="page-feed">
@@ -144,7 +144,7 @@ async function gistCreate(data, token) {
 }
 
 async function gistRead(id) {
-  const res = await fetch(`https://api.github.com/gists/${id}`);
+  const res = await fetch(`https://api.github.com/gists/${id}`, { cache: 'no-store' });
   if (!res.ok) throw new Error(`GitHub ${res.status}`);
   const g = await res.json();
   const file = g.files[FILE] ?? g.files['crappzyt.json'];
@@ -301,10 +301,12 @@ let saveTimer = null;
 let saveRetry = 0;
 
 function setSaveStatus(msg) {
-  let el = document.getElementById('save-status');
+  const el = document.getElementById('save-status');
+  const nav = document.getElementById('nav-links');
   if (!el) return;
   el.textContent = msg;
   el.classList.toggle('hidden', !msg);
+  if (nav) nav.classList.toggle('hidden', !!msg);
 }
 
 async function flushSave() {
