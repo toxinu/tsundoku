@@ -6,7 +6,7 @@
   <title>crappzyt</title>
   <style>
     body { font-family: monospace; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-    input, button { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; }
+    input, button { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; }
     .error  { color: red; font-size: 0.9em; }
     .hint   { color: #666; font-size: 0.85em; }
     .hidden { display: none; }
@@ -235,9 +235,26 @@ function toggleShowRead() {
   renderFiltered();
 }
 
+function findEntryByUrl(url) {
+  for (const s of app.data.subscriptions)
+    for (const e of (s.entries || []))
+      if (e.url === url) return e;
+  return null;
+}
+
 function initReadSet() {
   readSet.clear();
-  for (const url of (app.data.read || [])) readSet.add(url);
+  // migrate old top-level read array
+  if (Array.isArray(app.data.read)) {
+    const urls = new Set(app.data.read);
+    for (const s of app.data.subscriptions)
+      for (const e of (s.entries || []))
+        if (urls.has(e.url)) e.read = true;
+    delete app.data.read;
+  }
+  for (const s of app.data.subscriptions)
+    for (const e of (s.entries || []))
+      if (e.read) readSet.add(e.url);
 }
 
 let saveTimer = null;
@@ -272,7 +289,8 @@ function scheduleSave() {
 
 function markRead(url) {
   readSet.add(url);
-  app.data.read = [...readSet];
+  const entry = findEntryByUrl(url);
+  if (entry) entry.read = true;
   if (showRead) renderFiltered();
   else document.getElementById('item-' + btoa(url).replace(/[^a-z0-9]/gi, ''))?.remove();
   scheduleSave();
@@ -280,7 +298,8 @@ function markRead(url) {
 
 function markUnread(url) {
   readSet.delete(url);
-  app.data.read = [...readSet];
+  const entry = findEntryByUrl(url);
+  if (entry) delete entry.read;
   renderFiltered();
   scheduleSave();
 }
@@ -323,14 +342,14 @@ function fmtDate(iso) {
 
 function renderEntries(entries) {
   const list = document.getElementById('feed-list');
-  const visible = showRead ? entries : entries.filter(v => !readSet.has(v.url));
+  const visible = showRead ? entries : entries.filter(v => !v.read);
   if (!visible.length) {
     list.innerHTML = '';
     return setMsg('feed-status', showRead ? 'No entries.' : 'Nothing unread.', true);
   }
   setMsg('feed-status', '', false);
   list.innerHTML = visible.map(v => {
-    const isRead = readSet.has(v.url);
+    const isRead = !!v.read;
     const id = 'item-' + btoa(v.url).replace(/[^a-z0-9]/gi, '');
     return `
     <div class="feed-item${isRead ? ' is-read' : ''}" id="${id}">
@@ -476,8 +495,10 @@ function renderSubs() {
 
 async function readAllSub(i) {
   const sub = app.data.subscriptions[i];
-  for (const e of (sub.entries || [])) readSet.add(e.url);
-  app.data.read = [...readSet];
+  for (const e of (sub.entries || [])) {
+    e.read = true;
+    readSet.add(e.url);
+  }
   renderFiltered();
   scheduleSave();
 }
@@ -631,7 +652,7 @@ document.getElementById('setup-btn').addEventListener('click', async () => {
   setBtn('setup-btn', true, 'Creating…');
   try {
     const encrypted = await encryptToken(token, password);
-    const data = { v: 1, ...encrypted, subscriptions: [], read: [] };
+    const data = { v: 1, ...encrypted, subscriptions: [] };
     const gist = await gistCreate(data, token);
 
     localStorage.setItem('crappzyt_gist', gist.id);
