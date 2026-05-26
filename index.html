@@ -3,7 +3,7 @@
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
-  <title>crappzyt</title>
+  <title>tsundoku</title>
   <style>
     body { font-family: monospace; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
     input, button { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; }
@@ -31,7 +31,7 @@
 
 <!-- ── Setup ──────────────────────────────────────────────────────── -->
 <div id="screen-setup">
-  <h2>crappzyt — setup</h2>
+  <h2>tsundoku — setup</h2>
   <input id="setup-token"    type="password" placeholder="GitHub token (gist scope)">
   <input id="setup-password" type="password" placeholder="Password">
   <input id="setup-confirm"  type="password" placeholder="Confirm password">
@@ -43,7 +43,7 @@
 
 <!-- ── Login ──────────────────────────────────────────────────────── -->
 <div id="screen-login" class="hidden">
-  <h2>crappzyt</h2>
+  <h2>tsundoku</h2>
   <input id="login-gist"     type="text"     placeholder="Gist ID">
   <input id="login-password" type="password" placeholder="Password">
   <button id="login-btn">Unlock</button>
@@ -53,7 +53,7 @@
 
 <!-- ── App ────────────────────────────────────────────────────────── -->
 <div id="screen-app" class="hidden">
-  <nav><strong>crappzyt</strong> — <a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a><a onclick="showPage('settings')">settings</a><span id="save-status" class="hint hidden"></span></nav>
+  <nav><strong>tsundoku</strong> — <a onclick="showPage('feed')">feed</a><a onclick="showPage('subs')">subscriptions</a><a onclick="showPage('settings')">settings</a><span id="save-status" class="hint hidden"></span></nav>
   <hr>
 
   <div id="page-feed">
@@ -125,13 +125,13 @@ async function decryptToken({ enc, salt, iv }, password) {
 
 // ── Gist ───────────────────────────────────────────────────────────
 
-const FILE = 'crappzyt.json';
+const FILE = 'tsundoku.json';
 
 async function gistCreate(data, token) {
   const res = await fetch('https://api.github.com/gists', {
     method: 'POST',
     headers: { Authorization: `Bearer ${token}`, 'Content-Type': 'application/json' },
-    body: JSON.stringify({ description: 'crappzyt', public: false,
+    body: JSON.stringify({ description: 'tsundoku', public: false,
       files: { [FILE]: { content: JSON.stringify(data, null, 2) } } }),
   });
   if (!res.ok) throw new Error(`GitHub ${res.status}: ${await res.text()}`);
@@ -604,10 +604,10 @@ async function removeSub(i) {
 // ── Settings ───────────────────────────────────────────────────────
 
 function logout() {
-  sessionStorage.removeItem('crappzyt_token');
+  sessionStorage.removeItem('tsundoku_token');
   Object.assign(app, { token: null, gistId: null, data: null });
   readSet.clear();
-  document.getElementById('login-gist').value = localStorage.getItem('crappzyt_gist') || '';
+  document.getElementById('login-gist').value = localStorage.getItem('tsundoku_gist') || '';
   showScreen('login');
 }
 
@@ -660,8 +660,8 @@ document.getElementById('setup-btn').addEventListener('click', async () => {
     const data = { v: 1, ...encrypted, subscriptions: [] };
     const gist = await gistCreate(data, token);
 
-    localStorage.setItem('crappzyt_gist', gist.id);
-    sessionStorage.setItem('crappzyt_token', token);
+    localStorage.setItem('tsundoku_gist', gist.id);
+    sessionStorage.setItem('tsundoku_token', token);
     Object.assign(app, { token, gistId: gist.id, data });
     initReadSet();
     showScreen('app');
@@ -689,8 +689,8 @@ document.getElementById('login-btn').addEventListener('click', async () => {
     const check = await fetch('https://api.github.com/user', { headers: { Authorization: `Bearer ${token}` } });
     if (!check.ok) throw new Error('Token invalid or revoked.');
 
-    localStorage.setItem('crappzyt_gist', gistId);
-    sessionStorage.setItem('crappzyt_token', token);
+    localStorage.setItem('tsundoku_gist', gistId);
+    sessionStorage.setItem('tsundoku_token', token);
     Object.assign(app, { token, gistId, data });
     initReadSet();
     showScreen('app');
@@ -716,8 +716,8 @@ for (const id of ['sub-input', 'sub-folder'])
 // ── Init ────────────────────────────────────────────────────────────
 
 (async () => {
-  const gistId = localStorage.getItem('crappzyt_gist');
-  const token  = sessionStorage.getItem('crappzyt_token');
+  const gistId = localStorage.getItem('tsundoku_gist');
+  const token  = sessionStorage.getItem('tsundoku_token');
 
   if (gistId && token) {
     try {
@@ -728,7 +728,7 @@ for (const id of ['sub-input', 'sub-folder'])
       showPage('feed');
       return;
     } catch {
-      sessionStorage.removeItem('crappzyt_token');
+      sessionStorage.removeItem('tsundoku_token');
     }
   }
 
