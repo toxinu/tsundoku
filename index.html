@@ -6,7 +6,7 @@
   <title>tsundoku</title>
   <style>
     body { font-family: monospace; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-    input, button { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; }
+    input, button, select { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; }
     .error  { color: red; font-size: 0.9em; }
     .hint   { color: #666; font-size: 0.85em; }
     .hidden { display: none; }
@@ -15,15 +15,17 @@
     .feed-item img { width: 120px; height: 68px; object-fit: cover; flex-shrink: 0; }
     .feed-item-body { display: flex; flex-direction: column; }
     .feed-item-body .mark-read { margin-top: auto; font-size: 0.85em; cursor: pointer; }
-    .sub-row { display: flex; align-items: center; gap: 0.5rem; padding: 0.25rem 0; border-bottom: 1px solid #eee; }
-    .sub-row button { width: auto; margin: 0; padding: 0.1rem 0.4rem; flex-shrink: 0; }
-    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.1rem 0.3rem; font-size: 0.8em; font-family: monospace; margin: 0; border: 1px solid transparent; }
-    .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; }
-    .sub-folder-input { width: 90px; padding: 0.1rem 0.3rem; font-size: 0.8em; font-family: monospace; margin: 0; flex-shrink: 0; }
+    .sub-row { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.65rem 0; border-bottom: 1px solid #eee; }
+    .sub-row-meta { display: flex; gap: 0.5rem; align-items: center; }
+    .sub-row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
+    .sub-row-actions button { width: auto; margin: 0; padding: 0.45rem 0.7rem; font-size: 14px; flex-shrink: 0; }
+    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.3rem 0.4rem; font-size: 15px; font-family: monospace; margin: 0; border: 1px solid transparent; background: transparent; }
+    .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; background: #fff; }
+    .sub-folder-input { width: 100px; padding: 0.3rem 0.4rem; font-size: 15px; font-family: monospace; margin: 0; flex-shrink: 0; }
     .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
     #feed-filter { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-    #feed-filter select { display: inline-block; width: auto; margin: 0; }
-    #feed-filter button { width: auto; margin: 0; padding: 0.2rem 0.5rem; font-size: 0.85em; }
+    #feed-filter select { display: inline-block; width: auto; margin: 0; font-size: 16px; }
+    #feed-filter button { width: auto; margin: 0; padding: 0.5rem 0.75rem; font-size: 16px; }
     .feed-item.is-read { opacity: 0.4; }
   </style>
 </head>
@@ -517,16 +519,20 @@ function renderSubs() {
 
     html += groups[folder].map(s => `
       <div class="sub-row" id="sub-row-${s._i}">
-        <input class="sub-name${s.disabled ? ' hint' : ''}" type="text" value="${esc(s.name)}"
-          data-idx="${s._i}"
-          onblur="saveSubName(this)" onkeydown="if(event.key==='Enter')this.blur()">
-        <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
-          data-idx="${s._i}" list="folder-datalist"
-          onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
-        <button onclick="readAllSub(${s._i})">read all</button>
-        <button onclick="toggleDisableSub(${s._i})">${s.disabled ? 'enable' : 'disable'}</button>
-        <button onclick="refreshSub(${s._i})">refresh</button>
-        <button onclick="removeSub(${s._i})">remove</button>
+        <div class="sub-row-meta">
+          <input class="sub-name${s.disabled ? ' hint' : ''}" type="text" value="${esc(s.name)}"
+            data-idx="${s._i}"
+            onblur="saveSubName(this)" onkeydown="if(event.key==='Enter')this.blur()">
+          <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
+            data-idx="${s._i}" list="folder-datalist"
+            onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
+        </div>
+        <div class="sub-row-actions">
+          <button onclick="readAllSub(${s._i})">read all</button>
+          <button onclick="toggleDisableSub(${s._i})">${s.disabled ? 'enable' : 'disable'}</button>
+          <button id="refresh-sub-${s._i}" onclick="refreshSub(${s._i})">refresh</button>
+          <button onclick="removeSub(${s._i})">remove</button>
+        </div>
       </div>`).join('');
   }
 
@@ -573,8 +579,7 @@ async function saveSubFolder(input) {
 
 async function refreshSub(i) {
   const sub = app.data.subscriptions[i];
-  const row = document.getElementById(`sub-row-${i}`);
-  const btn = row.querySelector('button');
+  const btn = document.getElementById(`refresh-sub-${i}`);
   btn.disabled = true;
   btn.textContent = '…';
   try {
