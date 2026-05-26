@@ -13,8 +13,8 @@
     nav a   { margin-right: 1rem; cursor: pointer; text-decoration: underline; }
     .feed-item { display: flex; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid #ddd; }
     .feed-item img { width: 120px; height: 68px; object-fit: cover; flex-shrink: 0; }
-    .feed-item-body { display: flex; flex-direction: column; }
-    .feed-item-body .mark-read { margin-top: auto; font-size: 0.85em; cursor: pointer; }
+    .feed-item-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
+    .feed-item .mark-read { margin-left: auto; align-self: center; flex-shrink: 0; cursor: pointer; display: inline-block; padding: 0.5rem; font-size: 1.2rem; line-height: 1; text-decoration: none; color: #aaa; user-select: none; }
     .sub-row { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.65rem 0; border-bottom: 1px solid #eee; }
     .sub-row-meta { display: flex; gap: 0.5rem; align-items: center; }
     .sub-row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
@@ -26,6 +26,9 @@
     #feed-filter { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
     #feed-filter select { display: inline-block; width: auto; margin: 0; font-size: 16px; }
     #feed-filter button { width: auto; margin: 0; padding: 0.5rem 0.75rem; font-size: 16px; }
+    @media (min-width: 480px) {
+      #feed-filter select, #feed-filter button { font-size: 13px; padding: 0.3rem 0.5rem; }
+    }
     .feed-item.is-read { opacity: 0.4; }
   </style>
 </head>
@@ -390,12 +393,12 @@ function renderEntries(entries) {
     const id = 'item-' + btoa(v.url).replace(/[^a-z0-9]/gi, '');
     return `
     <div class="feed-item${isRead ? ' is-read' : ''}" id="${id}">
-      ${v.thumb ? `<img src="${esc(v.thumb)}" loading="lazy" alt="">` : '<div style="width:120px;height:68px;flex-shrink:0"></div>'}
       <div class="feed-item-body">
         <div><a href="${esc(v.url)}" target="_blank" rel="noopener">${esc(v.title)}</a></div>
         <div><span class="hint">${esc(v.channel)} · ${fmtDate(v.published)}</span></div>
-        <a class="mark-read" onclick="${isRead ? 'markUnread' : 'markRead'}(this.dataset.url)" data-url="${esc(v.url)}">${isRead ? 'mark as unread' : 'mark as read'}</a>
       </div>
+      ${v.thumb ? `<a href="${esc(v.url)}" target="_blank" rel="noopener"><img src="${esc(v.thumb)}" loading="lazy" alt=""></a>` : ''}
+      <a class="mark-read" onclick="${isRead ? 'markUnread' : 'markRead'}(this.dataset.url)" data-url="${esc(v.url)}" title="${isRead ? 'mark as unread' : 'mark as read'}">${isRead ? '✓' : '○'}</a>
     </div>`;
   }).join('');
 }
