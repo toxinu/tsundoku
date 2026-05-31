@@ -23,9 +23,9 @@
     .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; background: #fff; }
     .sub-folder-input { width: 100px; padding: 0.3rem 0.4rem; font-size: 15px; font-family: monospace; margin: 0; flex-shrink: 0; }
     .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
-    #feed-filter { display: flex; justify-content: space-between; align-items: center; margin-bottom: 0.5rem; }
-    #feed-filter select { display: inline-block; width: auto; margin: 0; font-size: 16px; }
-    #feed-filter button { width: auto; margin: 0; padding: 0.5rem 0.75rem; font-size: 16px; }
+    #feed-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem; }
+    #feed-filter select { flex: 1 1 auto; min-width: 0; width: auto; margin: 0; font-size: 16px; }
+    #feed-filter button { flex: 1 1 auto; width: auto; margin: 0; padding: 0.5rem 0.75rem; font-size: 16px; }
     @media (min-width: 480px) {
       #feed-filter select, #feed-filter button { font-size: 13px; padding: 0.3rem 0.5rem; }
     }
@@ -720,7 +720,7 @@ async function removeSub(i) {
 // ── Settings ───────────────────────────────────────────────────────
 
 function logout() {
-  sessionStorage.removeItem('tsundoku_token');
+  localStorage.removeItem('tsundoku_token');
   Object.assign(app, { token: null, gistId: null, data: null });
   readSet.clear();
   document.getElementById('login-gist').value = localStorage.getItem('tsundoku_gist') || '';
@@ -777,7 +777,7 @@ document.getElementById('setup-btn').addEventListener('click', async () => {
     const gist = await gistCreate(data, token);
 
     localStorage.setItem('tsundoku_gist', gist.id);
-    sessionStorage.setItem('tsundoku_token', token);
+    localStorage.setItem('tsundoku_token', token);
     Object.assign(app, { token, gistId: gist.id, data });
     initReadSet();
     showScreen('app');
@@ -806,7 +806,7 @@ document.getElementById('login-btn').addEventListener('click', async () => {
     if (!check.ok) throw new Error('Token invalid or revoked.');
 
     localStorage.setItem('tsundoku_gist', gistId);
-    sessionStorage.setItem('tsundoku_token', token);
+    localStorage.setItem('tsundoku_token', token);
     Object.assign(app, { token, gistId, data });
     initReadSet();
     showScreen('app');
@@ -839,7 +839,7 @@ for (const id of ['sub-input', 'sub-folder'])
   }
 
   const gistId = localStorage.getItem('tsundoku_gist');
-  const token  = sessionStorage.getItem('tsundoku_token') || sessionStorage.getItem('crappzyt_token');
+  const token  = localStorage.getItem('tsundoku_token') || sessionStorage.getItem('crappzyt_token');
 
   if (gistId && token) {
     try {
@@ -850,7 +850,7 @@ for (const id of ['sub-input', 'sub-folder'])
       showPage('feed');
       return;
     } catch {
-      sessionStorage.removeItem('tsundoku_token');
+      localStorage.removeItem('tsundoku_token');
     }
   }
 
