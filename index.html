@@ -29,6 +29,7 @@
     @media (min-width: 480px) {
       #feed-filter select, #feed-filter button { font-size: 13px; padding: 0.3rem 0.5rem; }
     }
+    .sub-last-update { font-size: 0.8em; color: #888; flex-shrink: 0; white-space: nowrap; }
     .feed-item.is-read { opacity: 0.4; }
   </style>
 </head>
@@ -63,9 +64,13 @@
 
   <div id="page-feed">
     <div id="feed-filter">
-      <select id="feed-folder-filter" onchange="loadFeed()">
+      <select id="feed-folder-filter" onchange="onFolderChange()">
         <option value="">All folders</option>
       </select>
+      <select id="feed-feed-filter" onchange="renderFiltered()">
+        <option value="">All feeds</option>
+      </select>
+      <button id="refresh-scoped-btn" onclick="refreshScoped()">refresh</button>
       <button id="toggle-read-btn" onclick="toggleShowRead()">show read</button>
     </div>
     <p id="feed-status" class="hint hidden"></p>
@@ -436,12 +441,30 @@ async function refreshFeeds() {
   setMsg('feed-status', '', false);
 }
 
+function updateFeedFilter(folderFilter) {
+  const feedEl = document.getElementById('feed-feed-filter');
+  const prev = feedEl.value;
+  const subs = app.data.subscriptions.filter(s => !s.disabled);
+  const inFolder = folderFilter ? subs.filter(s => s.folder === folderFilter) : subs;
+  feedEl.innerHTML = '<option value="">All feeds</option>' +
+    inFolder.map(s => {
+      const unread = (s.entries || []).filter(e => !readSet.has(e.url)).length;
+      const label  = unread ? `${esc(s.name)} (${unread})` : esc(s.name);
+      return `<option value="${esc(s.name)}"${s.name === prev ? ' selected' : ''}>${label}</option>`;
+    }).join('');
+}
+
+function onFolderChange() {
+  updateFeedFilter(document.getElementById('feed-folder-filter').value);
+  renderFiltered();
+}
+
 function renderFiltered() {
   const folderFilter = document.getElementById('feed-folder-filter')?.value || '';
+  const feedFilter   = document.getElementById('feed-feed-filter')?.value || '';
   const all = flattenEntries();
-  const entries = folderFilter
-    ? all.filter(e => getFolderForChannel(e.channel) === folderFilter)
-    : all;
+  let entries = folderFilter ? all.filter(e => getFolderForChannel(e.channel) === folderFilter) : all;
+  if (feedFilter) entries = entries.filter(e => e.channel === feedFilter);
   renderEntries(entries);
 }
 
@@ -461,9 +484,17 @@ async function loadFeed() {
   // Rebuild folder options, preserving current selection
   const folders = getFolders();
   const prev = filterEl.value;
+  const unreadByFolder = folder => app.data.subscriptions
+    .filter(s => !s.disabled && s.folder === folder)
+    .reduce((n, s) => n + (s.entries || []).filter(e => !readSet.has(e.url)).length, 0);
   filterEl.innerHTML = '<option value="">All folders</option>' +
-    folders.map(f => `<option value="${esc(f)}"${f === prev ? ' selected' : ''}>${esc(f)}</option>`).join('');
+    folders.map(f => {
+      const unread = unreadByFolder(f);
+      const label  = unread ? `${esc(f)} (${unread})` : esc(f);
+      return `<option value="${esc(f)}"${f === prev ? ' selected' : ''}>${label}</option>`;
+    }).join('');
   const folderFilter = filterEl.value;
+  updateFeedFilter(folderFilter);
 
   const hasSubs = folderFilter
     ? app.data.subscriptions.some(s => s.folder === folderFilter)
@@ -476,6 +507,45 @@ async function loadFeed() {
   const all = flattenEntries();
   if (!all.length) return setMsg('feed-status', 'No entries yet — hit Refresh on the subscriptions page.', true);
   renderFiltered();
+}
+
+async function refreshScoped() {
+  const btn = document.getElementById('refresh-scoped-btn');
+  btn.disabled = true;
+  btn.textContent = '…';
+
+  const folderFilter = document.getElementById('feed-folder-filter').value;
+  const feedFilter   = document.getElementById('feed-feed-filter').value;
+  const subs = app.data.subscriptions;
+  const active = subs.map((s, i) => ({ s, i })).filter(({ s }) => {
+    if (s.disabled) return false;
+    if (feedFilter)   return s.name === feedFilter;
+    if (folderFilter) return s.folder === folderFilter;
+    return true;
+  });
+
+  try {
+    const results = await Promise.allSettled(active.map(({ s }) => fetchFeed(s.rssUrl)));
+    let changed = false;
+    results.forEach((r, j) => {
+      if (r.status === 'fulfilled') {
+        const i = active[j].i;
+        subs[i].entries   = mergeEntries(subs[i].entries, r.value.entries);
+        subs[i].fetchedAt = new Date().toISOString();
+        changed = true;
+      }
+    });
+    if (changed) {
+      await gistWrite(app.gistId, app.data, app.token);
+      updateFeedFilter(folderFilter);
+      renderFiltered();
+    }
+  } catch (e) {
+    setMsg('feed-status', 'Refresh failed: ' + e.message, true);
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'refresh';
+  }
 }
 
 // ── Subscriptions ───────────────────────────────────────────────────
@@ -531,6 +601,7 @@ function renderSubs() {
           <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
             data-idx="${s._i}" list="folder-datalist"
             onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
+          <span class="sub-last-update">${fmtDate(s.fetchedAt) || '—'}</span>
         </div>
         <div class="sub-row-actions">
           <button onclick="readAllSub(${s._i})">read all</button>
