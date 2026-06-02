@@ -15,14 +15,13 @@
     .feed-item img { width: 120px; height: 68px; object-fit: cover; flex-shrink: 0; }
     .feed-item-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
     .feed-item .mark-read { margin-left: auto; align-self: center; flex-shrink: 0; cursor: pointer; display: inline-block; padding: 0.5rem; font-size: 1.2rem; line-height: 1; text-decoration: none; color: #aaa; user-select: none; }
-    .sub-row { display: flex; flex-direction: column; gap: 0.4rem; padding: 0.65rem 0; border-bottom: 1px solid #eee; }
-    .sub-row-meta { display: flex; gap: 0.5rem; align-items: center; }
-    .sub-row-actions { display: flex; gap: 0.4rem; flex-wrap: wrap; }
-    .sub-row-actions button { width: auto; margin: 0; padding: 0.45rem 0.7rem; font-size: 14px; flex-shrink: 0; }
-    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.3rem 0.4rem; font-size: 15px; font-family: monospace; margin: 0; border: 1px solid transparent; background: transparent; }
+    .sub-row { display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0; border-bottom: 1px solid #eee; }
+    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.25rem 0.35rem; font-size: 15px; font-family: monospace; margin: 0; border: 1px solid transparent; background: transparent; }
     .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; background: #fff; }
-    .sub-folder-input { width: 100px; padding: 0.3rem 0.4rem; font-size: 15px; font-family: monospace; margin: 0; flex-shrink: 0; }
+    .sub-folder-input { width: 80px; padding: 0.25rem 0.35rem; font-size: 13px; font-family: monospace; margin: 0; flex-shrink: 0; }
+    .sub-icon-btn { width: auto; margin: 0; padding: 0.25rem 0.5rem; font-size: 15px; flex-shrink: 0; line-height: 1; }
     .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
+    @media (max-width: 400px) { .sub-folder-input { display: none; } }
     #feed-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem; }
     #feed-filter select { flex: 1 1 45%; min-width: 0; width: auto; margin: 0; font-size: 16px; }
     #feed-filter button { flex: 1 1 45%; width: auto; margin: 0; padding: 0.5rem 0.75rem; font-size: 16px; }
@@ -31,6 +30,9 @@
     }
     .sub-last-update { font-size: 0.8em; color: #888; flex-shrink: 0; white-space: nowrap; }
     .feed-item.is-read { opacity: 0.4; }
+    .sync-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: transparent; }
+    .sync-dot.ok  { background: #2ecc71; }
+    .sync-dot.err { background: #e74c3c; }
   </style>
 </head>
 <body>
@@ -422,17 +424,24 @@ function mergeEntries(existing, fresh) {
   return fresh.map(e => readByUrl.get(e.url) ? { ...e, read: true } : e);
 }
 
-async function refreshFeeds() {
+async function refreshFeeds(onProgress) {
   const subs = app.data.subscriptions;
   const active = subs.map((s, i) => ({ s, i })).filter(({ s }) => !s.disabled);
-  const results = await Promise.allSettled(active.map(({ s }) => fetchFeed(s.rssUrl)));
+  let done = 0;
+  const total = active.length;
+  const results = await Promise.allSettled(active.map(({ s }) =>
+    fetchFeed(s.rssUrl).finally(() => onProgress?.(++done, total))
+  ));
   let changed = false;
   results.forEach((r, j) => {
+    const i = active[j].i;
     if (r.status === 'fulfilled') {
-      const i = active[j].i;
       subs[i].entries   = mergeEntries(subs[i].entries, r.value.entries);
       subs[i].fetchedAt = new Date().toISOString();
+      subs[i].syncOk    = true;
       changed = true;
+    } else {
+      subs[i].syncOk = false;
     }
   });
   if (!changed) return;
@@ -524,15 +533,22 @@ async function refreshScoped() {
     return true;
   });
 
+  let done = 0;
+  const total = active.length;
   try {
-    const results = await Promise.allSettled(active.map(({ s }) => fetchFeed(s.rssUrl)));
+    const results = await Promise.allSettled(active.map(({ s }) =>
+      fetchFeed(s.rssUrl).finally(() => { btn.textContent = `${++done}/${total}`; })
+    ));
     let changed = false;
     results.forEach((r, j) => {
+      const i = active[j].i;
       if (r.status === 'fulfilled') {
-        const i = active[j].i;
         subs[i].entries   = mergeEntries(subs[i].entries, r.value.entries);
         subs[i].fetchedAt = new Date().toISOString();
+        subs[i].syncOk    = true;
         changed = true;
+      } else {
+        subs[i].syncOk = false;
       }
     });
     if (changed) {
@@ -554,15 +570,23 @@ document.getElementById('refresh-btn').addEventListener('click', async () => {
   setBtn('refresh-btn', true, 'Refreshing…');
   setMsg('refresh-status', '', false);
   try {
-    await refreshFeeds();
+    await refreshFeeds((done, total) => setBtn('refresh-btn', true, `${done}/${total}`));
     const ago = app.data.fetchedAt ? `Last fetched ${fmtDate(app.data.fetchedAt)}.` : '';
     setMsg('refresh-status', ago, true);
+    renderSubs();
   } catch (e) {
     setMsg('refresh-status', 'Refresh failed: ' + e.message, true);
   } finally {
     setBtn('refresh-btn', false, 'Refresh feeds');
   }
 });
+
+function syncDotTitle(s) {
+  const date = s.fetchedAt ? ' · ' + fmtDate(s.fetchedAt) : '';
+  if (s.syncOk === true)  return 'Last sync succeeded' + date;
+  if (s.syncOk === false) return 'Last sync failed' + date;
+  return s.fetchedAt ? 'Last synced' + date : 'Never synced';
+}
 
 function renderSubs() {
   const list = document.getElementById('sub-list');
@@ -594,21 +618,18 @@ function renderSubs() {
 
     html += groups[folder].map(s => `
       <div class="sub-row" id="sub-row-${s._i}">
-        <div class="sub-row-meta">
-          <input class="sub-name${s.disabled ? ' hint' : ''}" type="text" value="${esc(s.name)}"
-            data-idx="${s._i}"
-            onblur="saveSubName(this)" onkeydown="if(event.key==='Enter')this.blur()">
-          <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
-            data-idx="${s._i}" list="folder-datalist"
-            onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
-          <span class="sub-last-update">${fmtDate(s.fetchedAt) || '—'}</span>
-        </div>
-        <div class="sub-row-actions">
-          <button onclick="readAllSub(${s._i})">read all</button>
-          <button onclick="toggleDisableSub(${s._i})">${s.disabled ? 'enable' : 'disable'}</button>
-          <button id="refresh-sub-${s._i}" onclick="refreshSub(${s._i})">refresh</button>
-          <button onclick="removeSub(${s._i})">remove</button>
-        </div>
+        <span class="sync-dot${s.syncOk === true ? ' ok' : s.syncOk === false ? ' err' : ''}"
+          title="${esc(syncDotTitle(s))}"></span>
+        <input class="sub-name${s.disabled ? ' hint' : ''}" type="text" value="${esc(s.name)}"
+          data-idx="${s._i}"
+          onblur="saveSubName(this)" onkeydown="if(event.key==='Enter')this.blur()">
+        <input class="sub-folder-input" type="text" value="${esc(s.folder || '')}" placeholder="folder"
+          data-idx="${s._i}" list="folder-datalist"
+          onblur="saveSubFolder(this)" onkeydown="if(event.key==='Enter')this.blur()">
+        <button class="sub-icon-btn" title="Mark all read" onclick="readAllSub(${s._i})">✓</button>
+        <button class="sub-icon-btn" title="${s.disabled ? 'Enable' : 'Disable'}" onclick="toggleDisableSub(${s._i})">${s.disabled ? 'on' : 'off'}</button>
+        <button class="sub-icon-btn" id="refresh-sub-${s._i}" title="Refresh" onclick="refreshSub(${s._i})">↺</button>
+        <button class="sub-icon-btn" title="Remove" onclick="removeSub(${s._i})">✕</button>
       </div>`).join('');
   }
 
@@ -662,12 +683,19 @@ async function refreshSub(i) {
     const { entries } = await fetchFeed(sub.rssUrl);
     sub.entries   = mergeEntries(sub.entries, entries);
     sub.fetchedAt = new Date().toISOString();
+    sub.syncOk    = true;
     await gistWrite(app.gistId, app.data, app.token);
   } catch (e) {
+    sub.syncOk = false;
     alert(`Refresh failed for ${sub.name}: ${e.message}`);
   } finally {
     btn.disabled = false;
     btn.textContent = 'refresh';
+    const dot = document.getElementById(`sub-row-${i}`)?.querySelector('.sync-dot');
+    if (dot) {
+      dot.className = `sync-dot ${sub.syncOk ? 'ok' : 'err'}`;
+      dot.title = sub.syncOk ? 'Last sync succeeded' : 'Last sync failed';
+    }
   }
 }
 
