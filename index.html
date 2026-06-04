@@ -4,23 +4,72 @@
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
   <title>tsundoku</title>
+  <script>
+    (function() {
+      var t = localStorage.getItem('tsundoku_theme');
+      if (t === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+      else if (t === 'light') document.documentElement.setAttribute('data-theme', 'light');
+    })();
+  </script>
   <style>
-    body { font-family: monospace; max-width: 640px; margin: 2rem auto; padding: 0 1rem; }
-    input, button, select { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; }
+    :root {
+      --bg: #ffffff;
+      --fg: #000000;
+      --link: #0000ee;
+      --color-hint: #666;
+      --color-muted: #888;
+      --border: #ddd;
+      --border-subtle: #eee;
+      --border-mid: #aaa;
+      --input-bg: #ffffff;
+      --input-fg: #000000;
+      --input-border: #767676;
+    }
+    @media (prefers-color-scheme: dark) {
+      :root:not([data-theme="light"]) {
+        --bg: #1a1a1a;
+        --fg: #e0e0e0;
+        --link: #7aadff;
+        --color-hint: #999;
+        --color-muted: #777;
+        --border: #333;
+        --border-subtle: #252525;
+        --border-mid: #555;
+        --input-bg: #2a2a2a;
+        --input-fg: #e0e0e0;
+        --input-border: #555;
+      }
+    }
+    [data-theme="dark"] {
+      --bg: #1a1a1a;
+      --fg: #e0e0e0;
+      --link: #7aadff;
+      --color-hint: #999;
+      --color-muted: #777;
+      --border: #333;
+      --border-subtle: #252525;
+      --border-mid: #555;
+      --input-bg: #2a2a2a;
+      --input-fg: #e0e0e0;
+      --input-border: #555;
+    }
+    body { font-family: monospace; max-width: 640px; margin: 2rem auto; padding: 0 1rem; background: var(--bg); color: var(--fg); }
+    a { color: var(--link); }
+    input, button, select { display: block; width: 100%; box-sizing: border-box; padding: 0.4rem; margin: 0.4rem 0; font-size: 16px; background: var(--input-bg); color: var(--input-fg); border: 1px solid var(--input-border); }
     .error  { color: red; font-size: 0.9em; }
-    .hint   { color: #666; font-size: 0.85em; }
+    .hint   { color: var(--color-hint); font-size: 0.85em; }
     .hidden { display: none; }
     nav a   { margin-right: 1rem; cursor: pointer; text-decoration: underline; }
-    .feed-item { display: flex; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid #ddd; }
+    .feed-item { display: flex; gap: 0.75rem; padding: 0.5rem 0; border-bottom: 1px solid var(--border); }
     .feed-item img { width: 120px; height: 68px; object-fit: cover; flex-shrink: 0; }
     .feed-item-body { display: flex; flex-direction: column; flex: 1; min-width: 0; }
-    .feed-item .mark-read { margin-left: auto; align-self: center; flex-shrink: 0; cursor: pointer; display: inline-block; padding: 0.5rem; font-size: 1.2rem; line-height: 1; text-decoration: none; color: #aaa; user-select: none; }
-    .sub-row { display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0; border-bottom: 1px solid #eee; }
-    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.25rem 0.35rem; font-size: 15px; font-family: monospace; margin: 0; border: 1px solid transparent; background: transparent; }
-    .sub-name:hover, .sub-name:focus { border-color: #aaa; outline: none; background: #fff; }
+    .feed-item .mark-read { margin-left: auto; align-self: center; flex-shrink: 0; cursor: pointer; display: inline-block; padding: 0.5rem; font-size: 1.2rem; line-height: 1; text-decoration: none; color: var(--border-mid); user-select: none; }
+    .sub-row { display: flex; align-items: center; gap: 0.35rem; padding: 0.4rem 0; border-bottom: 1px solid var(--border-subtle); }
+    .sub-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding: 0.25rem 0.35rem; font-size: 15px; font-family: monospace; margin: 0; border: 1px solid transparent; background: transparent; color: var(--fg); }
+    .sub-name:hover, .sub-name:focus { border-color: var(--border-mid); outline: none; background: var(--input-bg); }
     .sub-folder-input { width: 80px; padding: 0.25rem 0.35rem; font-size: 13px; font-family: monospace; margin: 0; flex-shrink: 0; }
     .sub-icon-btn { width: auto; margin: 0; padding: 0.25rem 0.5rem; font-size: 15px; flex-shrink: 0; line-height: 1; }
-    .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid #aaa; }
+    .folder-header { margin: 0.75rem 0 0.2rem; font-size: 0.85em; font-weight: bold; padding-bottom: 0.1rem; border-bottom: 1px solid var(--border-mid); }
     @media (max-width: 400px) { .sub-folder-input { display: none; } }
     #feed-filter { display: flex; flex-wrap: wrap; gap: 0.4rem; align-items: center; margin-bottom: 0.5rem; }
     #feed-filter select { flex: 1 1 45%; min-width: 0; width: auto; margin: 0; font-size: 16px; }
@@ -28,7 +77,7 @@
     @media (min-width: 480px) {
       #feed-filter select, #feed-filter button { font-size: 13px; padding: 0.3rem 0.5rem; }
     }
-    .sub-last-update { font-size: 0.8em; color: #888; flex-shrink: 0; white-space: nowrap; }
+    .sub-last-update { font-size: 0.8em; color: var(--color-muted); flex-shrink: 0; white-space: nowrap; }
     .feed-item.is-read { opacity: 0.4; }
     .sync-dot { width: 8px; height: 8px; border-radius: 50%; flex-shrink: 0; background: transparent; }
     .sync-dot.ok  { background: #2ecc71; }
@@ -93,8 +142,16 @@
   </div>
 
   <div id="page-settings" class="hidden">
+    <h3>Appearance</h3>
+    <select id="theme-select" onchange="setTheme(this.value)">
+      <option value="system">System default</option>
+      <option value="light">Light</option>
+      <option value="dark">Dark</option>
+    </select>
     <h3>Session</h3>
     <button onclick="logout()">Log out</button>
+    <h3>Export</h3>
+    <button onclick="exportOpml()">Export feeds as OPML</button>
     <h3>Change password</h3>
     <input id="cp-current"  type="password" placeholder="Current password">
     <input id="cp-new"      type="password" placeholder="New password">
@@ -185,7 +242,7 @@ const PROXIES = [
 ];
 
 function channelToRss(channelId) {
-  return `https://www.youtube.com/feeds/videos.xml?playlist_id=UULF${channelId.slice(2)}`;
+  return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
 }
 
 function resolveInput(raw) {
@@ -302,6 +359,15 @@ function initReadSet() {
   for (const s of app.data.subscriptions)
     for (const e of (s.entries || []))
       if (e.read) readSet.add(e.url);
+
+  let migrated = false;
+  for (const s of app.data.subscriptions) {
+    if (s.channelId && s.rssUrl?.includes('UULF')) {
+      s.rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${s.channelId}`;
+      migrated = true;
+    }
+  }
+  if (migrated) scheduleSave();
 }
 
 let saveTimer = null;
@@ -365,6 +431,9 @@ function showPage(name) {
     document.getElementById(`page-${p}`).classList.toggle('hidden', p !== name);
   if (name === 'feed') loadFeed();
   if (name === 'subs') renderSubs();
+  if (name === 'settings') {
+    document.getElementById('theme-select').value = localStorage.getItem('tsundoku_theme') || 'system';
+  }
 }
 
 function setMsg(id, msg, show = !!msg) {
@@ -454,7 +523,8 @@ function updateFeedFilter(folderFilter) {
   const feedEl = document.getElementById('feed-feed-filter');
   const prev = feedEl.value;
   const subs = app.data.subscriptions.filter(s => !s.disabled);
-  const inFolder = folderFilter ? subs.filter(s => s.folder === folderFilter) : subs;
+  const inFolder = (folderFilter ? subs.filter(s => s.folder === folderFilter) : subs)
+    .slice().sort((a, b) => a.name.localeCompare(b.name));
   feedEl.innerHTML = '<option value="">All feeds</option>' +
     inFolder.map(s => {
       const unread = (s.entries || []).filter(e => !readSet.has(e.url)).length;
@@ -745,6 +815,19 @@ async function removeSub(i) {
   renderSubs();
 }
 
+// ── Theme ──────────────────────────────────────────────────────────
+
+function applyTheme(theme) {
+  if (theme === 'dark') document.documentElement.setAttribute('data-theme', 'dark');
+  else if (theme === 'light') document.documentElement.setAttribute('data-theme', 'light');
+  else document.documentElement.removeAttribute('data-theme');
+}
+
+function setTheme(theme) {
+  localStorage.setItem('tsundoku_theme', theme);
+  applyTheme(theme);
+}
+
 // ── Settings ───────────────────────────────────────────────────────
 
 function logout() {
@@ -784,6 +867,39 @@ async function changePassword() {
     btn.disabled = false;
     btn.textContent = 'Change password';
   }
+}
+
+function exportOpml() {
+  const subs = app.data.subscriptions;
+  const xmlEsc = s => String(s).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+
+  const groups = {};
+  for (const s of subs) {
+    const key = s.folder || '';
+    if (!groups[key]) groups[key] = [];
+    groups[key].push(s);
+  }
+
+  const outline = s =>
+    `      <outline type="rss" text="${xmlEsc(s.name)}" xmlUrl="${xmlEsc(s.rssUrl)}"/>`;
+
+  let body = '';
+  const namedFolders = Object.keys(groups).filter(f => f).sort();
+  for (const folder of namedFolders) {
+    body += `    <outline text="${xmlEsc(folder)}">\n`;
+    body += groups[folder].map(outline).join('\n') + '\n';
+    body += `    </outline>\n`;
+  }
+  if (groups['']) body += groups[''].map(outline).join('\n') + '\n';
+
+  const opml = `<?xml version="1.0" encoding="UTF-8"?>\n<opml version="1.0">\n  <head>\n    <title>tsundoku subscriptions</title>\n  </head>\n  <body>\n${body}  </body>\n</opml>`;
+
+  const blob = new Blob([opml], { type: 'text/xml' });
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = 'tsundoku.opml';
+  a.click();
+  URL.revokeObjectURL(a.href);
 }
 
 // ── Auth ────────────────────────────────────────────────────────────
