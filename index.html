@@ -242,7 +242,9 @@ const PROXIES = [
 ];
 
 function channelToRss(channelId) {
-  return `https://www.youtube.com/feeds/videos.xml?channel_id=${channelId}`;
+  // UC… → UULF… is the long-form uploads playlist (excludes Shorts)
+  const playlistId = 'UULF' + channelId.slice(2);
+  return `https://www.youtube.com/feeds/videos.xml?playlist_id=${playlistId}`;
 }
 
 function resolveInput(raw) {
@@ -362,8 +364,8 @@ function initReadSet() {
 
   let migrated = false;
   for (const s of app.data.subscriptions) {
-    if (s.channelId && s.rssUrl?.includes('UULF')) {
-      s.rssUrl = `https://www.youtube.com/feeds/videos.xml?channel_id=${s.channelId}`;
+    if (s.channelId && s.rssUrl?.includes('channel_id=')) {
+      s.rssUrl = channelToRss(s.channelId);
       migrated = true;
     }
   }
