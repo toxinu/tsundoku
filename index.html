@@ -152,6 +152,9 @@
     <button onclick="logout()">Log out</button>
     <h3>Export</h3>
     <button onclick="exportOpml()">Export feeds as OPML</button>
+    <h3>CORS proxy</h3>
+    <input id="proxy-input" type="text" placeholder="https://your-worker.workers.dev/" onchange="setProxy(this.value)">
+    <p class="hint">Optional. Your own proxy, tried before the public ones. The feed URL is appended as <code>?url=</code>.</p>
     <h3>Change password</h3>
     <input id="cp-current"  type="password" placeholder="Current password">
     <input id="cp-new"      type="password" placeholder="New password">
@@ -230,15 +233,16 @@ async function gistWrite(id, data, token) {
 
 // ── Feed ───────────────────────────────────────────────────────────
 
+// Public CORS proxies are unreliable by nature: they go down, rate-limit, or
+// move behind API keys. We try several key-free ones in order. Some pass the
+// body through raw; others wrap it in JSON, so an `extract` unwraps those.
+// The only durable fix is a proxy you control (e.g. a Cloudflare Worker).
 const PROXIES = [
-  url => 'https://crossorigin.me/' + url,
-  url => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(url),
-  url => 'https://corsproxy.io/?' + encodeURIComponent(url),
-  url => 'https://api.codetabs.com/v1/proxy?quest=' + encodeURIComponent(url),
-  url => 'https://thingproxy.freeboard.io/fetch/' + url,
-  url => 'https://cors.eu.org/' + url,
-  url => 'https://proxy.cors.sh/' + url,
-  url => 'https://test.cors.workers.dev/' + url,
+  { build: u => 'https://api.codetabs.com/v1/proxy/?quest=' + encodeURIComponent(u) },
+  { build: u => 'https://api.allorigins.win/raw?url=' + encodeURIComponent(u) },
+  { build: u => 'https://api.cors.lol/?url=' + encodeURIComponent(u) },
+  { build: u => 'https://api.allorigins.win/get?url=' + encodeURIComponent(u), extract: t => JSON.parse(t).contents },
+  { build: u => 'https://whateverorigin.org/get?url=' + encodeURIComponent(u), extract: t => JSON.parse(t).contents },
 ];
 
 function channelToRss(channelId) {
@@ -278,19 +282,26 @@ function resolveInput(raw) {
 }
 
 async function fetchWithProxy(url) {
-  for (const proxy of PROXIES) {
+  const custom = localStorage.getItem('tsundoku_proxy');
+  const proxies = custom
+    ? [{ build: u => custom + (custom.includes('?') ? '&' : '?') + 'url=' + encodeURIComponent(u) }]
+    : PROXIES;
+  let lastErr;
+  for (const proxy of proxies) {
     try {
-      const res = await fetch(proxy(url));
-      if (res.ok) return res;
-    } catch {}
+      const res = await fetch(proxy.build(url));
+      if (!res.ok) { lastErr = new Error(`HTTP ${res.status}`); continue; }
+      const body = await res.text();
+      const text = proxy.extract ? proxy.extract(body) : body;
+      if (text && text.trim()) return text;
+    } catch (e) { lastErr = e; }
   }
-  throw new Error('All proxies failed');
+  throw new Error('All proxies failed' + (lastErr ? ` (${lastErr.message})` : ''));
 }
 
 async function fetchFeed(rssUrl) {
-  const res = await fetchWithProxy(rssUrl);
-  if (!res.ok) throw new Error(`RSS ${res.status}`);
-  const doc = new DOMParser().parseFromString(await res.text(), 'text/xml');
+  const text = await fetchWithProxy(rssUrl);
+  const doc = new DOMParser().parseFromString(text, 'text/xml');
 
   const MEDIA = 'http://search.yahoo.com/mrss/';
 
@@ -435,6 +446,7 @@ function showPage(name) {
   if (name === 'subs') renderSubs();
   if (name === 'settings') {
     document.getElementById('theme-select').value = localStorage.getItem('tsundoku_theme') || 'system';
+    document.getElementById('proxy-input').value = localStorage.getItem('tsundoku_proxy') || '';
   }
 }
 
@@ -828,6 +840,12 @@ function applyTheme(theme) {
 function setTheme(theme) {
   localStorage.setItem('tsundoku_theme', theme);
   applyTheme(theme);
+}
+
+function setProxy(url) {
+  url = url.trim();
+  if (url) localStorage.setItem('tsundoku_proxy', url);
+  else localStorage.removeItem('tsundoku_proxy');
 }
 
 // ── Settings ───────────────────────────────────────────────────────
